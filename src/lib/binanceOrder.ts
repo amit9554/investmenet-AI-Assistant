@@ -104,6 +104,7 @@ export async function placeLiveBinanceOrder(
     "https://api4.binance.com"
   ];
 
+  let lastErrorMsg = "Connection failed / Timeout";
   for (const domain of apiDomains) {
     const url = `${domain}/api/v3/order`;
     try {
@@ -119,13 +120,14 @@ export async function placeLiveBinanceOrder(
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.msg || `Binance Order placement failed with HTTP ${res.status}`);
+        throw new Error(data.msg || `HTTP ${res.status}`);
       }
       return data;
     } catch (err: any) {
+      lastErrorMsg = err.message || String(err);
       console.warn(`Live Order routing failed for ${upperSymbol} on ${domain}:`, err);
     }
   }
 
-  throw new Error(`Live Order routing failed for ${upperSymbol} on all Binance API endpoints.`);
+  throw new Error(lastErrorMsg);
 }
