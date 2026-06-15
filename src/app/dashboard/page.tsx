@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useStore } from "@/hooks/use-store";
+import { useStore, CURRENCY_SYMBOLS, CURRENCY_RATES } from "@/hooks/use-store";
 import {
   TrendingUp,
   TrendingDown,
@@ -28,7 +28,7 @@ interface MarketSentiment {
 export const INDIAN_SYMBOLS = ["NIFTY", "SENSEX", "RELIANCE", "TCS", "INFY"];
 
 export default function Dashboard() {
-  const { prices, priceChanges } = useStore();
+  const { prices, priceChanges, currency } = useStore();
   const [marketType, setMarketType] = useState<"crypto" | "indian">("crypto");
   
   const [sentiment, setSentiment] = useState<MarketSentiment | null>(null);
@@ -37,6 +37,17 @@ export default function Dashboard() {
   const [totalClosed, setTotalClosed] = useState(12);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Currency conversion helper
+  const formatDisplayPrice = (val: number, symbol: string) => {
+    const isIndian = INDIAN_SYMBOLS.includes(symbol.toUpperCase());
+    let usdVal = val;
+    if (isIndian) {
+      usdVal = val / 83.50; // Normalize Indian Stock INR price to USD base
+    }
+    const converted = usdVal * CURRENCY_RATES[currency];
+    return `${CURRENCY_SYMBOLS[currency]}${converted.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+  };
 
   const fetchData = async () => {
     try {
@@ -228,8 +239,7 @@ export default function Dashboard() {
           >
             <span className="text-[10px] font-bold text-muted uppercase tracking-widest">{token.display}</span>
             <span className={`text-lg font-extrabold tracking-tight mt-1.5 ${getPriceColorClass(token.name)}`}>
-              {marketType === "indian" ? "₹" : "$"}
-              {(prices[token.name] || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              {formatDisplayPrice(prices[token.name] || 0, token.name)}
             </span>
           </div>
         ))}
@@ -305,8 +315,7 @@ export default function Dashboard() {
                 </div>
                 <div className="flex items-center space-x-2.5">
                   <span className="text-xs text-muted font-medium">
-                    {marketType === "indian" ? "₹" : "$"}
-                    {Number(g.price || 0).toLocaleString()}
+                    {formatDisplayPrice(g.price || 0, g.symbol)}
                   </span>
                   <span className="flex items-center space-x-0.5 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400">
                     <TrendingUp className="h-3 w-3" />
@@ -323,8 +332,7 @@ export default function Dashboard() {
                 </div>
                 <div className="flex items-center space-x-2.5">
                   <span className="text-xs text-muted font-medium">
-                    {marketType === "indian" ? "₹" : "$"}
-                    {Number(l.price || 0).toLocaleString()}
+                    {formatDisplayPrice(l.price || 0, l.symbol)}
                   </span>
                   <span className="flex items-center space-x-0.5 rounded bg-red-500/10 px-1.5 py-0.5 text-[10px] font-bold text-red-400">
                     <TrendingDown className="h-3 w-3" />
@@ -365,7 +373,15 @@ export default function Dashboard() {
                   stroke="#64748b"
                   fontSize={10}
                   tickLine={false}
-                  tickFormatter={(val) => `${marketType === "indian" ? "₹" : "$"}${Math.round(val / 1000)}k`}
+                  tickFormatter={(val) => {
+                    const sampleSymbol = marketType === "crypto" ? "BTCUSDT" : "NIFTY";
+                    let usdVal = val;
+                    if (marketType === "indian") {
+                      usdVal = val / 83.50;
+                    }
+                    const converted = usdVal * CURRENCY_RATES[currency];
+                    return `${CURRENCY_SYMBOLS[currency]}${Math.round(converted / 1000)}k`;
+                  }}
                 />
                 <Tooltip
                   contentStyle={{ backgroundColor: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
@@ -395,7 +411,7 @@ export default function Dashboard() {
                 <div key={sig.id} className="flex items-center justify-between py-3">
                   <div className="flex flex-col text-left">
                     <span className="text-xs font-bold text-card-foreground">{sig.symbol}</span>
-                    <span className="text-[10px] text-muted font-semibold">Entry: {marketType === "indian" ? "₹" : "$"}{sig.entryPrice}</span>
+                    <span className="text-[10px] text-muted font-semibold">Entry: {formatDisplayPrice(sig.entryPrice, sig.symbol)}</span>
                   </div>
                   <div className="flex items-center space-x-2.5">
                     <span
@@ -453,11 +469,11 @@ export default function Dashboard() {
                         {sig.type}
                       </span>
                     </td>
-                    <td className="py-3">{marketType === "indian" ? "₹" : "$"}{sig.entryPrice}</td>
+                    <td className="py-3">{formatDisplayPrice(sig.entryPrice, sig.symbol)}</td>
                     <td className="py-3 text-muted">
-                      {marketType === "indian" ? "₹" : "$"}{sig.takeProfit1} / {marketType === "indian" ? "₹" : "$"}{sig.takeProfit2}
+                      {formatDisplayPrice(sig.takeProfit1, sig.symbol)} / {formatDisplayPrice(sig.takeProfit2, sig.symbol)}
                     </td>
-                    <td className="py-3 text-red-400/90">{marketType === "indian" ? "₹" : "$"}{sig.stopLoss}</td>
+                    <td className="py-3 text-red-400/90">{formatDisplayPrice(sig.stopLoss, sig.symbol)}</td>
                     <td className="py-3">
                       <span
                         className={`rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase ${

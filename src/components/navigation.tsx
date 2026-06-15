@@ -31,7 +31,7 @@ export default function Navigation({ children }: NavigationProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { data: session, status } = useSession();
-  const { wsStatus, connectWebSocket, disconnectWebSocket, theme, toggleTheme, initTheme } = useStore();
+  const { wsStatus, connectWebSocket, disconnectWebSocket, theme, toggleTheme, initTheme, currency, setCurrency } = useStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Initialize Theme and WebSocket connections
@@ -93,6 +93,18 @@ export default function Navigation({ children }: NavigationProps) {
           <span className="font-bold text-white dark:text-white tracking-tight text-lg">WebNex AI</span>
         </Link>
         <div className="flex items-center space-x-3">
+          {/* Currency Dropdown Mobile */}
+          <select
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value as any)}
+            className="bg-[#161b26] text-[10px] font-bold text-gray-300 rounded-lg px-1.5 py-1.5 border border-gray-700/60 focus:outline-none cursor-pointer"
+          >
+            <option value="USD">USD ($)</option>
+            <option value="INR">INR (₹)</option>
+            <option value="EUR">EUR (€)</option>
+            <option value="GBP">GBP (£)</option>
+          </select>
+
           {/* Theme Toggle Button Mobile */}
           <button
             onClick={toggleTheme}
@@ -177,6 +189,20 @@ export default function Navigation({ children }: NavigationProps) {
             </div>
             
             <div className="flex items-center">
+              {/* Currency Dropdown Desktop */}
+              <select
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value as any)}
+                className="bg-[#1f2638] text-[10px] font-bold text-gray-300 rounded-lg px-1.5 py-1 border border-gray-700/60 mr-2 focus:outline-none cursor-pointer"
+                title="Select Display Currency"
+                id="currency-select-btn"
+              >
+                <option value="USD">USD ($)</option>
+                <option value="INR">INR (₹)</option>
+                <option value="EUR">EUR (€)</option>
+                <option value="GBP">GBP (£)</option>
+              </select>
+
               {/* Theme Toggle Button Desktop */}
               <button
                 onClick={toggleTheme}

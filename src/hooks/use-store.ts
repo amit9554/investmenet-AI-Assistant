@@ -1,11 +1,27 @@
 import { create } from "zustand";
 
+export const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: "$",
+  INR: "₹",
+  EUR: "€",
+  GBP: "£",
+};
+
+export const CURRENCY_RATES: Record<string, number> = {
+  USD: 1.0,
+  INR: 83.50,
+  EUR: 0.92,
+  GBP: 0.79,
+};
+
 interface AppState {
   prices: Record<string, number>;
   priceChanges: Record<string, "up" | "down" | "neutral">;
   wsStatus: "connected" | "disconnected" | "connecting";
   activeTab: string;
   theme: "dark" | "light";
+  currency: "USD" | "INR" | "EUR" | "GBP";
+  setCurrency: (c: "USD" | "INR" | "EUR" | "GBP") => void;
   connectWebSocket: () => void;
   disconnectWebSocket: () => void;
   setActiveTab: (tab: string) => void;
@@ -39,6 +55,9 @@ export const useStore = create<AppState>((set, get) => {
     wsStatus: "disconnected",
     activeTab: "dashboard",
     theme: "dark",
+    currency: "USD",
+
+    setCurrency: (currency) => set({ currency }),
 
     setActiveTab: (tab) => set({ activeTab: tab }),
 

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useStore } from "@/hooks/use-store";
+import { useStore, CURRENCY_SYMBOLS, CURRENCY_RATES } from "@/hooks/use-store";
 import {
   Signal,
   Percent,
@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 
 export default function SignalsPage() {
-  const { prices } = useStore();
+  const { prices, currency } = useStore();
   const [signals, setSignals] = useState<any[]>([]);
   const [winRate, setWinRate] = useState(75);
   const [totalClosed, setTotalClosed] = useState(12);
@@ -35,6 +35,17 @@ export default function SignalsPage() {
   const [executingSignalId, setExecutingSignalId] = useState<string | null>(null);
   const [executionStatus, setExecutionStatus] = useState<Record<string, "idle" | "success" | "error">>({});
   const [executionError, setExecutionError] = useState<Record<string, string>>({});
+
+  // Currency conversion helper
+  const formatDisplayPrice = (val: number, symbol: string) => {
+    const isIndian = ["NIFTY", "SENSEX", "RELIANCE", "TCS", "INFY"].includes(symbol.toUpperCase());
+    let usdVal = val;
+    if (isIndian) {
+      usdVal = val / 83.50; // Normalize Indian Stock INR price to USD base
+    }
+    const converted = usdVal * CURRENCY_RATES[currency];
+    return `${CURRENCY_SYMBOLS[currency]}${converted.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+  };
 
   const fetchSignals = async () => {
     try {
@@ -314,7 +325,7 @@ export default function SignalsPage() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-gray-900 bg-[#0d111b] p-5 flex items-center space-x-4">
+        <div className="rounded-2xl border border-gray-950 bg-[#0d111b] p-5 flex items-center space-x-4">
           <div className="rounded-xl bg-emerald-500/10 p-3 text-emerald-400">
             <CheckCircle2 className="h-6 w-6" />
           </div>
@@ -388,7 +399,7 @@ export default function SignalsPage() {
                       </div>
                       <div className="flex justify-between items-baseline">
                         <span className="text-base font-extrabold text-indigo-400">
-                          ${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          {formatDisplayPrice(currentPrice, sig.symbol)}
                         </span>
                         <span className={`text-xs font-bold ${Math.abs(priceDiffPercent) <= 0.5 ? "text-emerald-400" : "text-amber-400"}`}>
                           {priceDiffPercent > 0 ? "+" : ""}{priceDiffPercent.toFixed(2)}%
@@ -413,7 +424,7 @@ export default function SignalsPage() {
                     <div className="grid grid-cols-2 gap-y-3 gap-x-4 py-4 text-xs font-semibold">
                       <div>
                         <span className="text-gray-500">Entry Price</span>
-                        <div className="text-gray-200 text-sm mt-0.5">${sig.entryPrice}</div>
+                        <div className="text-gray-200 text-sm mt-0.5">{formatDisplayPrice(sig.entryPrice, sig.symbol)}</div>
                       </div>
                       <div>
                         <span className="text-gray-500">Win Probability</span>
@@ -423,15 +434,15 @@ export default function SignalsPage() {
                       </div>
                       <div>
                         <span className="text-gray-500">Take Profit 1</span>
-                        <div className="text-emerald-400 mt-0.5">${sig.takeProfit1}</div>
+                        <div className="text-emerald-400 mt-0.5">{formatDisplayPrice(sig.takeProfit1, sig.symbol)}</div>
                       </div>
                       <div>
                         <span className="text-gray-500">Take Profit 2</span>
-                        <div className="text-emerald-400 mt-0.5">${sig.takeProfit2}</div>
+                        <div className="text-emerald-400 mt-0.5">{formatDisplayPrice(sig.takeProfit2, sig.symbol)}</div>
                       </div>
                       <div>
                         <span className="text-gray-500">Stop Loss</span>
-                        <div className="text-red-400 mt-0.5">${sig.stopLoss}</div>
+                        <div className="text-red-400 mt-0.5">{formatDisplayPrice(sig.stopLoss, sig.symbol)}</div>
                       </div>
                       <div>
                         <span className="text-gray-500">Risk-to-Reward</span>
@@ -547,10 +558,10 @@ export default function SignalsPage() {
                         {sig.type}
                       </span>
                     </td>
-                    <td className="py-3">${sig.entryPrice}</td>
-                    <td className="py-3 text-red-400/90">${sig.stopLoss}</td>
+                    <td className="py-3">{formatDisplayPrice(sig.entryPrice, sig.symbol)}</td>
+                    <td className="py-3 text-red-400/90">{formatDisplayPrice(sig.stopLoss, sig.symbol)}</td>
                     <td className="py-3 text-gray-400">
-                      ${sig.takeProfit1} / ${sig.takeProfit2}
+                      {formatDisplayPrice(sig.takeProfit1, sig.symbol)} / {formatDisplayPrice(sig.takeProfit2, sig.symbol)}
                     </td>
                     <td className="py-3 text-gray-500 font-semibold">{sig.status}</td>
                     <td className="py-3">
