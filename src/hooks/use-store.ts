@@ -19,6 +19,7 @@ const INDIAN_SYMBOLS = ["NIFTY", "SENSEX", "RELIANCE", "TCS", "INFY"];
 export const useStore = create<AppState>((set, get) => {
   let socket: WebSocket | null = null;
   let indianMarketInterval: NodeJS.Timeout | null = null;
+  let wsDomainIndex = 0;
 
   return {
     prices: {
@@ -78,14 +79,25 @@ export const useStore = create<AppState>((set, get) => {
       set({ wsStatus: "connecting" });
       
       const streams = SYMBOLS.map((s) => `${s}@miniTicker`).join("/");
-      const url = `wss://stream.binance.com:9443/stream?streams=${streams}`;
+      
+      const wsHosts = [
+        `wss://stream.binance.com/stream?streams=${streams}`, // Port 443 (default, usually unblocked)
+        `wss://stream.binance.com:9443/stream?streams=${streams}`, // Port 9443
+        `wss://stream1.binance.com/stream?streams=${streams}`,
+        `wss://stream2.binance.com/stream?streams=${streams}`,
+        `wss://stream3.binance.com/stream?streams=${streams}`,
+        `wss://stream4.binance.com/stream?streams=${streams}`,
+      ];
+
+      const currentHost = wsHosts[wsDomainIndex];
+      console.log(`[WEBSOCKET] Attempting connection to ${currentHost.split("?")[0]} (Index: ${wsDomainIndex})`);
 
       try {
-        socket = new WebSocket(url);
+        socket = new WebSocket(currentHost);
 
         socket.onopen = () => {
           set({ wsStatus: "connected" });
-          console.log("Binance WebSocket stream connected.");
+          console.log(`[WEBSOCKET] Connected successfully to ${currentHost.split("?")[0]}`);
         };
 
         socket.onmessage = (event) => {
@@ -118,12 +130,16 @@ export const useStore = create<AppState>((set, get) => {
         socket.onclose = () => {
           set({ wsStatus: "disconnected" });
           socket = null;
-          console.log("Binance WebSocket stream closed. Reconnecting in 5s...");
-          setTimeout(() => get().connectWebSocket(), 5000);
+          
+          // Cycle to the next host for the next connection attempt
+          wsDomainIndex = (wsDomainIndex + 1) % wsHosts.length;
+          
+          console.log(`[WEBSOCKET] Connection closed. Retrying alternative host in 4s...`);
+          setTimeout(() => get().connectWebSocket(), 4000);
         };
 
         socket.onerror = (err) => {
-          console.error("Binance WebSocket error:", err);
+          console.error(`[WEBSOCKET] Error on host ${currentHost.split("?")[0]}:`, err);
           set({ wsStatus: "disconnected" });
           socket?.close();
         };

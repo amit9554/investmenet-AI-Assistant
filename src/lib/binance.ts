@@ -21,22 +21,37 @@ interface BinanceTickerPrice {
 export async function fetchLivePrices(): Promise<Record<string, number>> {
   const prices: Record<string, number> = {};
 
+  const apiDomains = [
+    process.env.BINANCE_API_URL || "https://api.binance.com",
+    "https://api1.binance.com",
+    "https://api2.binance.com",
+    "https://api3.binance.com",
+    "https://api4.binance.com"
+  ];
+
   // 1. Fetch Crypto Prices from Binance
-  try {
-    const res = await fetch(`${BINANCE_API_URL}/api/v3/ticker/price`, {
-      headers: getBinanceHeaders(),
-      next: { revalidate: 0 },
-    });
-    if (res.ok) {
-      const data: BinanceTickerPrice[] = await res.json();
-      for (const item of data) {
-        if (MONITORED_SYMBOLS.includes(item.symbol)) {
-          prices[item.symbol] = parseFloat(item.price);
+  let dataFetched = false;
+  for (const domain of apiDomains) {
+    try {
+      const res = await fetch(`${domain}/api/v3/ticker/price`, {
+        headers: getBinanceHeaders(),
+        next: { revalidate: 0 },
+        signal: AbortSignal.timeout(3000) // 3s timeout to fail fast
+      });
+      if (res.ok) {
+        const data: BinanceTickerPrice[] = await res.json();
+        for (const item of data) {
+          if (MONITORED_SYMBOLS.includes(item.symbol)) {
+            prices[item.symbol] = parseFloat(item.price);
+          }
         }
+        dataFetched = true;
+        console.log(`[BINANCE API] Successfully fetched prices from ${domain}`);
+        break;
       }
+    } catch (error) {
+      console.warn(`[BINANCE API] Failed to fetch prices from ${domain}:`, error);
     }
-  } catch (error) {
-    console.warn("Binance price API failed, using fallback crypto mocks:", error);
   }
 
   // Populate crypto fallbacks if missing
@@ -66,50 +81,68 @@ export async function syncHistoricalCandles(symbol: string, timeframe: string = 
 
   // Standard Binance Crypto Sync
   const binanceInterval = mapTimeframeToBinance(timeframe);
-  try {
-    const res = await fetch(
-      `${BINANCE_API_URL}/api/v3/klines?symbol=${upperSymbol}&interval=${binanceInterval}&limit=${limit}`,
-      {
-        headers: getBinanceHeaders(),
-      }
-    );
-    if (!res.ok) throw new Error(`HTTP status ${res.status}`);
+  const apiDomains = [
+    process.env.BINANCE_API_URL || "https://api.binance.com",
+    "https://api1.binance.com",
+    "https://api2.binance.com",
+    "https://api3.binance.com",
+    "https://api4.binance.com"
+  ];
 
-    const rawKlines: any[][] = await res.json();
-    const candleData = rawKlines.map((kline) => ({
-      symbol: upperSymbol,
-      timeframe,
-      open: parseFloat(kline[1]),
-      high: parseFloat(kline[2]),
-      low: parseFloat(kline[3]),
-      close: parseFloat(kline[4]),
-      volume: parseFloat(kline[5]),
-      timestamp: new Date(kline[0]),
-    }));
+  let synced = false;
+  for (const domain of apiDomains) {
+    try {
+      const res = await fetch(
+        `${domain}/api/v3/klines?symbol=${upperSymbol}&interval=${binanceInterval}&limit=${limit}`,
+        {
+          headers: getBinanceHeaders(),
+          signal: AbortSignal.timeout(3000) // 3s timeout to fail fast
+        }
+      );
+      if (!res.ok) throw new Error(`HTTP status ${res.status}`);
 
-    for (const candle of candleData) {
-      await prisma.marketCandle.upsert({
-        where: {
-          symbol_timeframe_timestamp: {
-            symbol: candle.symbol,
-            timeframe: candle.timeframe,
-            timestamp: candle.timestamp,
+      const rawKlines: any[][] = await res.json();
+      const candleData = rawKlines.map((kline) => ({
+        symbol: upperSymbol,
+        timeframe,
+        open: parseFloat(kline[1]),
+        high: parseFloat(kline[2]),
+        low: parseFloat(kline[3]),
+        close: parseFloat(kline[4]),
+        volume: parseFloat(kline[5]),
+        timestamp: new Date(kline[0]),
+      }));
+
+      for (const candle of candleData) {
+        await prisma.marketCandle.upsert({
+          where: {
+            symbol_timeframe_timestamp: {
+              symbol: candle.symbol,
+              timeframe: candle.timeframe,
+              timestamp: candle.timestamp,
+            },
           },
-        },
-        update: {
-          open: candle.open,
-          high: candle.high,
-          low: candle.low,
-          close: candle.close,
-          volume: candle.volume,
-        },
-        create: candle,
-      });
-    }
+          update: {
+            open: candle.open,
+            high: candle.high,
+            low: candle.low,
+            close: candle.close,
+            volume: candle.volume,
+          },
+          create: candle,
+        });
+      }
 
-    console.log(`Synced ${candleData.length} crypto candles for ${upperSymbol} (${timeframe}).`);
-  } catch (err) {
-    console.error(`Failed to sync Binance candles for ${upperSymbol} (${timeframe}):`, err);
+      console.log(`Synced ${candleData.length} crypto candles for ${upperSymbol} (${timeframe}) from ${domain}.`);
+      synced = true;
+      break;
+    } catch (err) {
+      console.warn(`Failed to sync Binance candles from ${domain} for ${upperSymbol}:`, err);
+    }
+  }
+
+  if (!synced) {
+    console.error(`All Binance API endpoints failed to sync candles for ${upperSymbol} (${timeframe}). Using mock fallback.`);
     await createMockRecentCandle(upperSymbol, timeframe);
   }
 }

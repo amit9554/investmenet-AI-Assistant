@@ -21,24 +21,39 @@ export async function getAccountSpotBalance(): Promise<number> {
   const timestamp = Date.now();
   const queryString = `timestamp=${timestamp}&recvWindow=6000`;
   const signature = generateSignature(queryString);
-  const url = `${BINANCE_API_URL}/api/v3/account?${queryString}&signature=${signature}`;
 
-  try {
-    const res = await fetch(url, {
-      method: "GET",
-      headers: {
-        "X-MBX-APIKEY": apiKey,
-      },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    
-    const usdtAsset = data.balances?.find((b: any) => b.asset === "USDT");
-    return usdtAsset ? parseFloat(usdtAsset.free) : 0;
-  } catch (err) {
-    console.warn("Failed to fetch live Binance balance, using mock default:", err);
-    return defaultBalance;
+  const apiDomains = [
+    process.env.BINANCE_API_URL || "https://api.binance.com",
+    "https://api1.binance.com",
+    "https://api2.binance.com",
+    "https://api3.binance.com",
+    "https://api4.binance.com"
+  ];
+
+  for (const domain of apiDomains) {
+    const url = `${domain}/api/v3/account?${queryString}&signature=${signature}`;
+    try {
+      const res = await fetch(url, {
+        method: "GET",
+        headers: {
+          "X-MBX-APIKEY": apiKey,
+        },
+        signal: AbortSignal.timeout(3000)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const usdtAsset = data.balances?.find((b: any) => b.asset === "USDT");
+        return usdtAsset ? parseFloat(usdtAsset.free) : 0;
+      } else {
+        throw new Error(`HTTP ${res.status}`);
+      }
+    } catch (err) {
+      console.warn(`Failed to fetch Binance balance from ${domain}:`, err);
+    }
   }
+
+  console.warn("All Binance API endpoints failed to fetch balance, using mock default.");
+  return defaultBalance;
 }
 
 export async function placeLiveBinanceOrder(
@@ -80,25 +95,37 @@ export async function placeLiveBinanceOrder(
 
   queryString += `&timestamp=${timestamp}&recvWindow=6000`;
   const signature = generateSignature(queryString);
-  const url = `${BINANCE_API_URL}/api/v3/order`;
 
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "X-MBX-APIKEY": apiKey,
-      },
-      body: `${queryString}&signature=${signature}`,
-    });
+  const apiDomains = [
+    process.env.BINANCE_API_URL || "https://api.binance.com",
+    "https://api1.binance.com",
+    "https://api2.binance.com",
+    "https://api3.binance.com",
+    "https://api4.binance.com"
+  ];
 
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.msg || `Binance Order placement failed with HTTP ${res.status}`);
+  for (const domain of apiDomains) {
+    const url = `${domain}/api/v3/order`;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-MBX-APIKEY": apiKey,
+        },
+        body: `${queryString}&signature=${signature}`,
+        signal: AbortSignal.timeout(3000)
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.msg || `Binance Order placement failed with HTTP ${res.status}`);
+      }
+      return data;
+    } catch (err: any) {
+      console.warn(`Live Order routing failed for ${upperSymbol} on ${domain}:`, err);
     }
-    return data;
-  } catch (err: any) {
-    console.error(`Live Order routing failed for ${upperSymbol}:`, err);
-    throw err;
   }
+
+  throw new Error(`Live Order routing failed for ${upperSymbol} on all Binance API endpoints.`);
 }
