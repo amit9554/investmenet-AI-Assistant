@@ -54,6 +54,7 @@ model Signal {
   riskReward         Float
   confidenceScore    Float
   confidenceLevel    String        // "Low", "Medium", "High"
+  description        String?       // Description of why the signal was triggered
   status             SignalStatus  @default(OPEN)
   outcome            SignalOutcome @default(PENDING)
   profitLossPercent  Float?

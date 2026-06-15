@@ -173,8 +173,8 @@ export default function SignalsPage() {
                       <div className="text-gray-200 text-sm mt-0.5">${sig.entryPrice}</div>
                     </div>
                     <div>
-                      <span className="text-gray-500">Confidence</span>
-                      <div className={`text-sm mt-0.5 ${getConfidenceColor(sig.confidenceLevel)}`}>
+                      <span className="text-gray-500">Win Probability</span>
+                      <div className={`text-sm mt-0.5 font-bold ${getConfidenceColor(sig.confidenceLevel)}`}>
                         {sig.confidenceScore}% ({sig.confidenceLevel})
                       </div>
                     </div>
@@ -195,6 +195,12 @@ export default function SignalsPage() {
                       <div className="text-gray-200 mt-0.5">{sig.riskReward} R:R</div>
                     </div>
                   </div>
+
+                  {sig.description && (
+                    <div className="mt-1 mb-3 rounded-xl bg-card border border-border p-2.5 text-[10px] font-semibold text-muted leading-normal text-left">
+                      ⚡ <span className="text-indigo-400">Trigger:</span> {sig.description}
+                    </div>
+                  )}
                 </div>
 
                 <div className="border-t border-gray-900/60 pt-3 flex items-center justify-between text-[10px] font-semibold text-gray-500">

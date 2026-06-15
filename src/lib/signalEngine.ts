@@ -224,6 +224,7 @@ export async function processAndSaveSignals(): Promise<GeneratedSignal[]> {
             riskReward: signal.riskReward,
             confidenceScore: signal.confidenceScore,
             confidenceLevel: signal.confidenceLevel,
+            description: signal.description,
             status: SignalStatus.OPEN,
             outcome: SignalOutcome.PENDING,
           },
