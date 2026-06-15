@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 export default function SignalsPage() {
+  const { prices } = useStore();
   const [signals, setSignals] = useState<any[]>([]);
   const [winRate, setWinRate] = useState(75);
   const [totalClosed, setTotalClosed] = useState(12);
@@ -33,6 +34,7 @@ export default function SignalsPage() {
   // Trade execution states
   const [executingSignalId, setExecutingSignalId] = useState<string | null>(null);
   const [executionStatus, setExecutionStatus] = useState<Record<string, "idle" | "success" | "error">>({});
+  const [executionError, setExecutionError] = useState<Record<string, string>>({});
 
   const fetchSignals = async () => {
     try {
@@ -97,6 +99,7 @@ export default function SignalsPage() {
   const handleExecuteTrade = async (sig: any) => {
     setExecutingSignalId(sig.id);
     setExecutionStatus((prev) => ({ ...prev, [sig.id]: "idle" }));
+    setExecutionError((prev) => ({ ...prev, [sig.id]: "" }));
     try {
       const qty = getDefaultQuantity(sig.symbol);
       const res = await fetch("/api/trades/execute", {
@@ -112,15 +115,19 @@ export default function SignalsPage() {
         }),
       });
 
+      const data = await res.json();
+
       if (res.ok) {
         setExecutionStatus((prev) => ({ ...prev, [sig.id]: "success" }));
         fetchSignals();
       } else {
         setExecutionStatus((prev) => ({ ...prev, [sig.id]: "error" }));
+        setExecutionError((prev) => ({ ...prev, [sig.id]: data.error || "Trade execution failed." }));
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Manual trade execution failed:", err);
       setExecutionStatus((prev) => ({ ...prev, [sig.id]: "error" }));
+      setExecutionError((prev) => ({ ...prev, [sig.id]: err.message || "Network request failed." }));
     } finally {
       setExecutingSignalId(null);
     }
@@ -154,6 +161,76 @@ export default function SignalsPage() {
     if (lvl === "High") return "text-emerald-400";
     if (lvl === "Medium") return "text-amber-400";
     return "text-red-400";
+  };
+
+  // Advanced Entry Zone Math & Indicators
+  const getZoneStatus = (sig: any, currentPrice: number) => {
+    const isBuy = sig.type === "BUY";
+    const diffPct = ((currentPrice - sig.entryPrice) / sig.entryPrice) * 100;
+    
+    if (isBuy) {
+      // Optimal entry within 0.5% above entry price down to 1.5% below it
+      if (currentPrice <= sig.entryPrice * 1.005 && currentPrice >= sig.entryPrice * 0.985) {
+        return {
+          text: "🟢 IN BUY ZONE (Optimal Entry)",
+          subtext: "Current price is perfect for entering a long position. High potential win chance.",
+          badgeClass: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse",
+          actionable: true,
+        };
+      } else if (currentPrice < sig.entryPrice * 0.985) {
+        return {
+          text: "🔵 UNDER ENTRY (Favorable Discount)",
+          subtext: "Price is below targeted entry but above Stop Loss. High risk-to-reward ratio entry.",
+          badgeClass: "bg-teal-500/20 text-teal-400 border border-teal-500/30",
+          actionable: true,
+        };
+      } else {
+        return {
+          text: "⏳ WAITING FOR PULLBACK",
+          subtext: `Price has moved up ${diffPct.toFixed(2)}% above entry. Wait for a pullback to avoid buying high.`,
+          badgeClass: "bg-amber-500/10 text-amber-400 border border-amber-500/20",
+          actionable: false,
+        };
+      }
+    } else {
+      // SELL / SHORT
+      if (currentPrice >= sig.entryPrice * 0.995 && currentPrice <= sig.entryPrice * 1.015) {
+        return {
+          text: "🔴 IN SELL ZONE (Optimal Entry)",
+          subtext: "Current price is perfect for initiating a short position.",
+          badgeClass: "bg-rose-500/20 text-rose-400 border border-rose-500/30 animate-pulse",
+          actionable: true,
+        };
+      } else if (currentPrice > sig.entryPrice * 1.015) {
+        return {
+          text: "🔵 ABOVE ENTRY (Favorable Discount)",
+          subtext: "Price is higher than targeted short entry but below Stop Loss. Good short opportunity.",
+          badgeClass: "bg-teal-500/20 text-teal-400 border border-teal-500/30",
+          actionable: true,
+        };
+      } else {
+        return {
+          text: "⏳ WAITING FOR REBOUND",
+          subtext: `Price has dropped ${Math.abs(diffPct).toFixed(2)}% below entry. Wait for a minor bounce before shorting.`,
+          badgeClass: "bg-amber-500/10 text-amber-400 border border-amber-500/20",
+          actionable: false,
+        };
+      }
+    }
+  };
+
+  const getETA = (sig: any, currentPrice: number) => {
+    const distance = Math.abs(currentPrice - sig.entryPrice);
+    if (distance === 0) return "Reached";
+    
+    // Estimate standard speed: asset moves 0.015% of its price per minute
+    const speedPerMin = currentPrice * 0.00015;
+    const minutes = distance / speedPerMin;
+    
+    if (minutes < 1) return "Immediate";
+    if (minutes < 60) return `~${Math.round(minutes)} mins`;
+    if (minutes < 1440) return `~${(minutes / 60).toFixed(1)} hrs`;
+    return `> 24 hrs`;
   };
 
   return (
@@ -277,107 +354,152 @@ export default function SignalsPage() {
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {activeSignals.map((sig) => (
-              <div
-                key={sig.id}
-                className={`rounded-2xl border bg-[#0d111b] p-5 flex flex-col justify-between hover:border-gray-800 transition ${
-                  sig.type === "BUY" ? "glow-green" : "glow-red"
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between border-b border-gray-900/60 pb-3">
-                    <span className="text-sm font-extrabold text-white">{sig.symbol}</span>
-                    <span
-                      className={`rounded-lg px-2 py-0.5 text-[10px] font-extrabold ${
-                        sig.type === "BUY" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
-                      }`}
-                    >
-                      {sig.type}
-                    </span>
-                  </div>
+            {activeSignals.map((sig) => {
+              const currentPrice = prices[sig.symbol.toUpperCase()] || sig.entryPrice;
+              const priceDiff = currentPrice - sig.entryPrice;
+              const priceDiffPercent = (priceDiff / sig.entryPrice) * 100;
+              const zone = getZoneStatus(sig, currentPrice);
+              const eta = getETA(sig, currentPrice);
 
-                  <div className="grid grid-cols-2 gap-y-3 gap-x-4 py-4 text-xs font-semibold">
-                    <div>
-                      <span className="text-gray-500">Entry Price</span>
-                      <div className="text-gray-200 text-sm mt-0.5">${sig.entryPrice}</div>
+              return (
+                <div
+                  key={sig.id}
+                  className={`rounded-2xl border bg-[#0d111b] p-5 flex flex-col justify-between hover:border-gray-800 transition ${
+                    sig.type === "BUY" ? "glow-green" : "glow-red"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between border-b border-gray-900/60 pb-3">
+                      <span className="text-sm font-extrabold text-white">{sig.symbol}</span>
+                      <span
+                        className={`rounded-lg px-2 py-0.5 text-[10px] font-extrabold ${
+                          sig.type === "BUY" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
+                        }`}
+                      >
+                        {sig.type}
+                      </span>
                     </div>
-                    <div>
-                      <span className="text-gray-500">Win Probability</span>
-                      <div className={`text-sm mt-0.5 font-bold ${getConfidenceColor(sig.confidenceLevel)}`}>
-                        {sig.confidenceScore}% ({sig.confidenceLevel})
+
+                    {/* Advanced Real-time distance and action badges */}
+                    <div className="mt-3 bg-[#0a0d16] rounded-xl border border-gray-900/80 p-3 space-y-2 text-left">
+                      <div className="flex justify-between items-center text-[10px] uppercase font-bold text-gray-500">
+                        <span>Live price</span>
+                        <span>Distance to entry</span>
+                      </div>
+                      <div className="flex justify-between items-baseline">
+                        <span className="text-base font-extrabold text-indigo-400">
+                          ${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </span>
+                        <span className={`text-xs font-bold ${Math.abs(priceDiffPercent) <= 0.5 ? "text-emerald-400" : "text-amber-400"}`}>
+                          {priceDiffPercent > 0 ? "+" : ""}{priceDiffPercent.toFixed(2)}%
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between items-center pt-1.5 border-t border-gray-900/60 text-[10px] font-bold">
+                        <span className="text-gray-500 uppercase">Estimated ETA</span>
+                        <span className="text-gray-300 font-semibold">{eta}</span>
+                      </div>
+
+                      <div className="pt-1.5 border-t border-gray-900/60">
+                        <span className={`inline-block text-[9px] font-extrabold px-2 py-0.5 rounded ${zone.badgeClass}`}>
+                          {zone.text}
+                        </span>
+                        <p className="text-[9px] text-gray-400 mt-1 font-semibold leading-normal">
+                          {zone.subtext}
+                        </p>
                       </div>
                     </div>
-                    <div>
-                      <span className="text-gray-500">Take Profit 1</span>
-                      <div className="text-emerald-400 mt-0.5">${sig.takeProfit1}</div>
+
+                    <div className="grid grid-cols-2 gap-y-3 gap-x-4 py-4 text-xs font-semibold">
+                      <div>
+                        <span className="text-gray-500">Entry Price</span>
+                        <div className="text-gray-200 text-sm mt-0.5">${sig.entryPrice}</div>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Win Probability</span>
+                        <div className={`text-sm mt-0.5 font-bold ${getConfidenceColor(sig.confidenceLevel)}`}>
+                          {sig.confidenceScore}% ({sig.confidenceLevel})
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Take Profit 1</span>
+                        <div className="text-emerald-400 mt-0.5">${sig.takeProfit1}</div>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Take Profit 2</span>
+                        <div className="text-emerald-400 mt-0.5">${sig.takeProfit2}</div>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Stop Loss</span>
+                        <div className="text-red-400 mt-0.5">${sig.stopLoss}</div>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Risk-to-Reward</span>
+                        <div className="text-gray-200 mt-0.5">{sig.riskReward} R:R</div>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-gray-500">Take Profit 2</span>
-                      <div className="text-emerald-400 mt-0.5">${sig.takeProfit2}</div>
+
+                    {sig.description && (
+                      <div className="mt-1 mb-3 rounded-xl bg-card border border-border p-2.5 text-[10px] font-semibold text-muted leading-normal text-left">
+                        ⚡ <span className="text-indigo-400">Trigger:</span> {sig.description}
+                      </div>
+                    )}
+
+                    {/* Manual Live Order Trigger Button */}
+                    <div className="mt-2 pt-3 border-t border-gray-900/40">
+                      <button
+                        onClick={() => handleExecuteTrade(sig)}
+                        disabled={executingSignalId === sig.id || executionStatus[sig.id] === "success"}
+                        className={`w-full flex items-center justify-center space-x-2 py-2.5 px-4 rounded-xl text-xs font-bold transition shadow-md ${
+                          executionStatus[sig.id] === "success"
+                            ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/20 cursor-default"
+                            : executionStatus[sig.id] === "error"
+                            ? "bg-red-600/20 text-red-400 border border-red-500/20 hover:bg-red-600/30"
+                            : "bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700 shadow-indigo-600/10"
+                        }`}
+                      >
+                        {executingSignalId === sig.id ? (
+                          <>
+                            <RotateCw className="h-3 w-3 animate-spin" />
+                            <span>Routing Order...</span>
+                          </>
+                        ) : executionStatus[sig.id] === "success" ? (
+                          <>
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            <span>Order Placed (Live)</span>
+                          </>
+                        ) : executionStatus[sig.id] === "error" ? (
+                          <>
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                            <span>Execution Failed - Retry</span>
+                          </>
+                        ) : (
+                          <>
+                            <Play className="h-3 w-3 fill-white" />
+                            <span>Execute Live Trade on Binance</span>
+                          </>
+                        )}
+                      </button>
                     </div>
-                    <div>
-                      <span className="text-gray-500">Stop Loss</span>
-                      <div className="text-red-400 mt-0.5">${sig.stopLoss}</div>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Risk-to-Reward</span>
-                      <div className="text-gray-200 mt-0.5">{sig.riskReward} R:R</div>
-                    </div>
+
+                    {/* Detailed Error message reporting */}
+                    {executionStatus[sig.id] === "error" && executionError[sig.id] && (
+                      <div className="mt-2 text-left text-[9px] font-bold text-red-400 bg-red-950/20 border border-red-900/50 p-2 rounded-xl leading-relaxed">
+                        ⚠️ **Error Details**: {executionError[sig.id]}
+                      </div>
+                    )}
                   </div>
 
-                  {sig.description && (
-                    <div className="mt-1 mb-3 rounded-xl bg-card border border-border p-2.5 text-[10px] font-semibold text-muted leading-normal text-left">
-                      ⚡ <span className="text-indigo-400">Trigger:</span> {sig.description}
-                    </div>
-                  )}
-
-                  {/* Manual Live Order Trigger Button */}
-                  <div className="mt-4 pt-3 border-t border-gray-900/40">
-                    <button
-                      onClick={() => handleExecuteTrade(sig)}
-                      disabled={executingSignalId === sig.id || executionStatus[sig.id] === "success"}
-                      className={`w-full flex items-center justify-center space-x-2 py-2.5 px-4 rounded-xl text-xs font-bold transition shadow-md ${
-                        executionStatus[sig.id] === "success"
-                          ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/20 cursor-default"
-                          : executionStatus[sig.id] === "error"
-                          ? "bg-red-600/20 text-red-400 border border-red-500/20 hover:bg-red-600/30"
-                          : "bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700 shadow-indigo-600/10"
-                      }`}
-                    >
-                      {executingSignalId === sig.id ? (
-                        <>
-                          <RotateCw className="h-3 w-3 animate-spin" />
-                          <span>Routing Order...</span>
-                        </>
-                      ) : executionStatus[sig.id] === "success" ? (
-                        <>
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          <span>Order Placed (Live)</span>
-                        </>
-                      ) : executionStatus[sig.id] === "error" ? (
-                        <>
-                          <AlertTriangle className="h-3.5 w-3.5" />
-                          <span>Execution Failed - Retry</span>
-                        </>
-                      ) : (
-                        <>
-                          <Play className="h-3 w-3 fill-white" />
-                          <span>Execute Live Trade on Binance</span>
-                        </>
-                      )}
-                    </button>
+                  <div className="border-t border-gray-900/60 pt-3 mt-3 flex items-center justify-between text-[10px] font-semibold text-gray-500">
+                    <span className="flex items-center space-x-1">
+                      <Clock className="h-3.5 w-3.5 text-gray-600" />
+                      <span>{new Date(sig.signalTime).toLocaleTimeString()}</span>
+                    </span>
+                    <span>Spot Limit Order</span>
                   </div>
                 </div>
-
-                <div className="border-t border-gray-900/60 pt-3 mt-3 flex items-center justify-between text-[10px] font-semibold text-gray-500">
-                  <span className="flex items-center space-x-1">
-                    <Clock className="h-3.5 w-3.5 text-gray-600" />
-                    <span>{new Date(sig.signalTime).toLocaleTimeString()}</span>
-                  </span>
-                  <span>Spot Limit Order</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
