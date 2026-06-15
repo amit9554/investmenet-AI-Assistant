@@ -1,6 +1,7 @@
 import { prisma } from "./db";
 import { sendAlertNotification } from "./alerts";
 import { SignalStatus, SignalOutcome } from "@prisma/client";
+import { placeLiveBinanceOrder } from "./binanceOrder";
 
 export async function checkProfitBooking(symbol: string, currentPrice: number): Promise<void> {
   // 1. Fetch all OPEN signals for this symbol
@@ -101,13 +102,30 @@ export async function checkProfitBooking(symbol: string, currentPrice: number): 
           },
         });
 
-        // Close virtual trades linked to this signal
+        // Close virtual/live trades linked to this signal
         const activeTrades = await prisma.trade.findMany({
           where: { signalId: signal.id, status: "OPEN" },
         });
 
         for (const trade of activeTrades) {
           const profitLoss = trade.amount * trade.entryPrice * (pnlPercent / 100);
+
+          // Execute exit order on Binance if it was placed live
+          if (trade.binanceOrderId) {
+            try {
+              const closeSide = signal.type === "BUY" ? "SELL" : "BUY";
+              console.log(`[PROFIT BOOKING] Closing Binance position for ${trade.symbol}. Side: ${closeSide}, Amount: ${trade.amount}`);
+              await placeLiveBinanceOrder(
+                trade.symbol,
+                closeSide,
+                "MARKET",
+                trade.amount
+              );
+            } catch (err) {
+              console.error(`[PROFIT BOOKING] Failed to close Binance position for trade ${trade.id}:`, err);
+            }
+          }
+
           await prisma.trade.update({
             where: { id: trade.id },
             data: {

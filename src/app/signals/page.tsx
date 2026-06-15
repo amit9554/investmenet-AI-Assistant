@@ -25,6 +25,15 @@ export default function SignalsPage() {
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
 
+  // Bot states
+  const [botEnabled, setBotEnabled] = useState(false);
+  const [botRunning, setBotRunning] = useState(false);
+  const [updatingBot, setUpdatingBot] = useState(false);
+
+  // Trade execution states
+  const [executingSignalId, setExecutingSignalId] = useState<string | null>(null);
+  const [executionStatus, setExecutionStatus] = useState<Record<string, "idle" | "success" | "error">>({});
+
   const fetchSignals = async () => {
     try {
       const res = await fetch("/api/signals");
@@ -41,8 +50,85 @@ export default function SignalsPage() {
     }
   };
 
+  const fetchBotSettings = async () => {
+    try {
+      const res = await fetch("/api/settings/bot");
+      if (res.ok) {
+        const data = await res.json();
+        setBotEnabled(data.enabled);
+        setBotRunning(data.running);
+      }
+    } catch (err) {
+      console.error("Error fetching bot settings:", err);
+    }
+  };
+
+  const toggleBot = async () => {
+    setUpdatingBot(true);
+    try {
+      const res = await fetch("/api/settings/bot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !botEnabled }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBotEnabled(data.enabled);
+        setBotRunning(data.running);
+      }
+    } catch (err) {
+      console.error("Error toggling bot:", err);
+    } finally {
+      setUpdatingBot(false);
+    }
+  };
+
+  const getDefaultQuantity = (symbol: string) => {
+    const sym = symbol.toUpperCase();
+    if (sym === "BTCUSDT" || sym === "BTC") return 0.0005;
+    if (sym === "ETHUSDT" || sym === "ETH") return 0.01;
+    if (sym === "SOLUSDT" || sym === "SOL") return 0.2;
+    if (sym === "BNBUSDT" || sym === "BNB") return 0.05;
+    if (sym === "XRPUSDT" || sym === "XRP") return 50;
+    // Indian stock fallback
+    return 10;
+  };
+
+  const handleExecuteTrade = async (sig: any) => {
+    setExecutingSignalId(sig.id);
+    setExecutionStatus((prev) => ({ ...prev, [sig.id]: "idle" }));
+    try {
+      const qty = getDefaultQuantity(sig.symbol);
+      const res = await fetch("/api/trades/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: sig.symbol,
+          side: sig.type,
+          type: "MARKET",
+          quantity: qty,
+          price: sig.entryPrice,
+          signalId: sig.id,
+        }),
+      });
+
+      if (res.ok) {
+        setExecutionStatus((prev) => ({ ...prev, [sig.id]: "success" }));
+        fetchSignals();
+      } else {
+        setExecutionStatus((prev) => ({ ...prev, [sig.id]: "error" }));
+      }
+    } catch (err) {
+      console.error("Manual trade execution failed:", err);
+      setExecutionStatus((prev) => ({ ...prev, [sig.id]: "error" }));
+    } finally {
+      setExecutingSignalId(null);
+    }
+  };
+
   useEffect(() => {
     fetchSignals();
+    fetchBotSettings();
   }, []);
 
   const triggerScanner = async () => {
@@ -94,6 +180,49 @@ export default function SignalsPage() {
           )}
           <span>{scanning ? "Scanning Assets..." : "Trigger AI Market Scan"}</span>
         </button>
+      </div>
+
+      {/* Auto Bot Settings Panel */}
+      <div className="rounded-2xl border border-gray-900 bg-[#0d111b] p-6 flex flex-col justify-between md:flex-row items-center gap-6">
+        <div className="flex items-center space-x-4 text-left">
+          <div className={`rounded-xl p-3 ${botEnabled ? "bg-emerald-500/10 text-emerald-400" : "bg-gray-500/10 text-gray-400"}`}>
+            <Gauge className={`h-8 w-8 ${botRunning && botEnabled ? "animate-pulse" : ""}`} />
+          </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <h2 className="text-lg font-bold text-white font-outfit">AI Auto-Trading Bot</h2>
+              {botEnabled ? (
+                <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-ping" />
+              ) : null}
+            </div>
+            <p className="text-xs text-gray-400 max-w-lg mt-0.5">
+              When enabled, the bot automatically scans the market, executes buy/sell Spot positions based on indicators, and closes them on profit targets.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
+          {botEnabled && (
+            <div className="rounded-lg bg-emerald-950/20 border border-emerald-900/50 px-3.5 py-2 text-[10px] font-bold text-emerald-400 tracking-wide uppercase">
+              ⚡ BOT ACTIVE & SCANNING
+            </div>
+          )}
+          <button
+            onClick={toggleBot}
+            disabled={updatingBot}
+            className={`flex items-center space-x-2 rounded-xl px-5 py-3 text-sm font-bold text-white shadow-lg transition disabled:opacity-50 w-full sm:w-auto justify-center ${
+              botEnabled
+                ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
+                : "bg-gray-800 hover:bg-gray-700 shadow-gray-800/20"
+            }`}
+            id="toggle-bot-btn"
+          >
+            {updatingBot ? (
+              <RotateCw className="h-4 w-4 animate-spin" />
+            ) : null}
+            <span>{botEnabled ? "Disable Auto Bot" : "Enable Auto Bot"}</span>
+          </button>
+        </div>
       </div>
 
       {/* Signal Stats cards */}
@@ -201,9 +330,46 @@ export default function SignalsPage() {
                       ⚡ <span className="text-indigo-400">Trigger:</span> {sig.description}
                     </div>
                   )}
+
+                  {/* Manual Live Order Trigger Button */}
+                  <div className="mt-4 pt-3 border-t border-gray-900/40">
+                    <button
+                      onClick={() => handleExecuteTrade(sig)}
+                      disabled={executingSignalId === sig.id || executionStatus[sig.id] === "success"}
+                      className={`w-full flex items-center justify-center space-x-2 py-2.5 px-4 rounded-xl text-xs font-bold transition shadow-md ${
+                        executionStatus[sig.id] === "success"
+                          ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/20 cursor-default"
+                          : executionStatus[sig.id] === "error"
+                          ? "bg-red-600/20 text-red-400 border border-red-500/20 hover:bg-red-600/30"
+                          : "bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700 shadow-indigo-600/10"
+                      }`}
+                    >
+                      {executingSignalId === sig.id ? (
+                        <>
+                          <RotateCw className="h-3 w-3 animate-spin" />
+                          <span>Routing Order...</span>
+                        </>
+                      ) : executionStatus[sig.id] === "success" ? (
+                        <>
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          <span>Order Placed (Live)</span>
+                        </>
+                      ) : executionStatus[sig.id] === "error" ? (
+                        <>
+                          <AlertTriangle className="h-3.5 w-3.5" />
+                          <span>Execution Failed - Retry</span>
+                        </>
+                      ) : (
+                        <>
+                          <Play className="h-3 w-3 fill-white" />
+                          <span>Execute Live Trade on Binance</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
-                <div className="border-t border-gray-900/60 pt-3 flex items-center justify-between text-[10px] font-semibold text-gray-500">
+                <div className="border-t border-gray-900/60 pt-3 mt-3 flex items-center justify-between text-[10px] font-semibold text-gray-500">
                   <span className="flex items-center space-x-1">
                     <Clock className="h-3.5 w-3.5 text-gray-600" />
                     <span>{new Date(sig.signalTime).toLocaleTimeString()}</span>

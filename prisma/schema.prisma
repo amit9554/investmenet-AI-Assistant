@@ -68,19 +68,20 @@ model Signal {
 }
 
 model Trade {
-  id          String    @id @default(uuid())
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  signalId    String?
-  signal      Signal?   @relation(fields: [signalId], references: [id], onDelete: SetNull)
-  symbol      String
-  entryPrice  Float
-  exitPrice   Float?
-  amount      Float
-  profitLoss  Float?
-  status      String    // "OPEN", "CLOSED"
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id             String    @id @default(uuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  signalId       String?
+  signal         Signal?   @relation(fields: [signalId], references: [id], onDelete: SetNull)
+  symbol         String
+  entryPrice     Float
+  exitPrice      Float?
+  amount         Float
+  profitLoss     Float?
+  status         String    // "OPEN", "CLOSED"
+  binanceOrderId String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([userId])
 }
