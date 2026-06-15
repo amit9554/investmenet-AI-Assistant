@@ -4,6 +4,15 @@ import { MONITORED_SYMBOLS } from "./signalEngine";
 const BINANCE_API_URL = process.env.BINANCE_API_URL || "https://api.binance.com";
 export const INDIAN_SYMBOLS = ["NIFTY", "SENSEX", "RELIANCE", "TCS", "INFY"];
 
+const getBinanceHeaders = () => {
+  const headers: Record<string, string> = {};
+  const apiKey = process.env.BINANCE_API_KEY;
+  if (apiKey) {
+    headers["X-MBX-APIKEY"] = apiKey;
+  }
+  return headers;
+};
+
 interface BinanceTickerPrice {
   symbol: string;
   price: string;
@@ -15,6 +24,7 @@ export async function fetchLivePrices(): Promise<Record<string, number>> {
   // 1. Fetch Crypto Prices from Binance
   try {
     const res = await fetch(`${BINANCE_API_URL}/api/v3/ticker/price`, {
+      headers: getBinanceHeaders(),
       next: { revalidate: 0 },
     });
     if (res.ok) {
@@ -58,7 +68,10 @@ export async function syncHistoricalCandles(symbol: string, timeframe: string = 
   const binanceInterval = mapTimeframeToBinance(timeframe);
   try {
     const res = await fetch(
-      `${BINANCE_API_URL}/api/v3/klines?symbol=${upperSymbol}&interval=${binanceInterval}&limit=${limit}`
+      `${BINANCE_API_URL}/api/v3/klines?symbol=${upperSymbol}&interval=${binanceInterval}&limit=${limit}`,
+      {
+        headers: getBinanceHeaders(),
+      }
     );
     if (!res.ok) throw new Error(`HTTP status ${res.status}`);
 
