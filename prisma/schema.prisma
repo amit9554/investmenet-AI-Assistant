@@ -1,0 +1,176 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum SignalType {
+  BUY
+  SELL
+}
+
+enum SignalStatus {
+  OPEN
+  CLOSED
+}
+
+enum SignalOutcome {
+  PENDING
+  WIN
+  LOSS
+}
+
+model User {
+  id            String        @id @default(uuid())
+  email         String        @unique
+  passwordHash  String
+  name          String?
+  role          Role          @default(USER)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  trades        Trade[]
+  alerts        Alert[]
+  subscriptions Subscription[]
+  backtests     Backtest[]
+  settings      Setting[]
+}
+
+model Signal {
+  id                 String        @id @default(uuid())
+  symbol             String
+  type               SignalType
+  entryPrice         Float
+  stopLoss           Float
+  takeProfit1        Float
+  takeProfit2        Float
+  riskReward         Float
+  confidenceScore    Float
+  confidenceLevel    String        // "Low", "Medium", "High"
+  status             SignalStatus  @default(OPEN)
+  outcome            SignalOutcome @default(PENDING)
+  profitLossPercent  Float?
+  signalTime         DateTime      @default(now())
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  trades             Trade[]
+
+  @@index([symbol])
+  @@index([status])
+}
+
+model Trade {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  signalId    String?
+  signal      Signal?   @relation(fields: [signalId], references: [id], onDelete: SetNull)
+  symbol      String
+  entryPrice  Float
+  exitPrice   Float?
+  amount      Float
+  profitLoss  Float?
+  status      String    // "OPEN", "CLOSED"
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model Alert {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  symbol      String
+  type        String   // "PRICE", "SIGNAL", "INDICATOR"
+  condition   String   // "ABOVE", "BELOW", etc.
+  value       Float
+  isTriggered Boolean  @default(false)
+  isSent      Boolean  @default(false)
+  channels    String[] // ["IN_APP", "TELEGRAM", "EMAIL"]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([symbol])
+}
+
+model Subscription {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tier      String   // "FREE", "PRO", "VIP"
+  status    String   // "ACTIVE", "EXPIRED"
+  startDate DateTime @default(now())
+  endDate   DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model MarketCandle {
+  id        String   @id @default(uuid())
+  symbol    String
+  timeframe String   // "5m", "15m", "1h", "4h", "1d"
+  open      Float
+  high      Float
+  low       Float
+  close     Float
+  volume    Float
+  timestamp DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([symbol, timeframe, timestamp])
+  @@index([symbol, timeframe])
+}
+
+model Backtest {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  symbol       String
+  timeframe    String
+  startDate    DateTime
+  endDate      DateTime
+  totalTrades  Int
+  winRate      Float
+  profitFactor Float
+  drawdown     Float
+  roi          Float
+  results      Json     // JSON array of trades, performance details
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Sentiment {
+  id             String   @id @default(uuid())
+  fearGreedScore Int
+  fearGreedValue String   // "Fear", "Greed", "Neutral"
+  bullishCount   Int
+  bearishCount   Int
+  neutralCount   Int
+  score          Float    // 0-100 overall sentiment score
+  source         String
+  timestamp      DateTime @default(now())
+}
+
+model Setting {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key       String
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, key])
+}

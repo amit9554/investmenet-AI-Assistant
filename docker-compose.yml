@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: trading-ai-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: trading_ai
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trading-ai-web
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/trading_ai?schema=public
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=f6c245c60fb99a38f321cc170e6a8ff3db6d2c44855d3f2780658fa99692484a
+      - NEXT_PUBLIC_BINANCE_WS_URL=wss://stream.binance.com:9443/ws
+      - BINANCE_API_URL=https://api.binance.com
+      - TELEGRAM_BOT_TOKEN=mock_bot_token
+      - TELEGRAM_CHAT_ID=mock_chat_id
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:
